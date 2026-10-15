@@ -10,7 +10,7 @@
 
 ## 发布
 
-将解压后的 `index.html`、`assets`、`vendor` 文件夹、`.nojekyll 和本文件放在 GitHub 仓库根目录，然后启用 GitHub Pages。请保留两个文件夹内全部文件及原有文件名。
+将解压后的 `index.html`、`assets`、`shoot-assets`、`growth-assets`、`audio`、`vendor` 文件夹、`.nojekyll` 和本文件放在 GitHub 仓库根目录，然后启用 GitHub Pages。请保留所有文件夹内的全部文件及原有文件名。
 
 ## 音乐与音效
 
