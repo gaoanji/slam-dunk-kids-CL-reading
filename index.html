@@ -1808,11 +1808,19 @@ function openGrowthOverlay(kind,html,onclose,afterclose,manualReplay=false){
  if(growthOverlay)return;const focus=document.activeElement,wasPaused=paused;paused=true;clockLast=performance.now();
  const layer=document.createElement('section');layer.id='growthCelebration';layer.className=kind+(manualReplay?' manualReplay':'');layer.tabIndex=-1;layer.setAttribute('role','dialog');layer.setAttribute('aria-modal','true');layer.setAttribute('aria-label',kind==='teamWelcome'?'欢迎加入篮球小子篮球队':kind==='stageCelebration'?'关卡挑战完成':'球员等级提升');
  const blocked=[...$('app').children].map(el=>({el,inert:el.inert}));blocked.forEach(x=>x.el.inert=true);layer.innerHTML=html+(kind==='teamWelcome'||kind==='stageCelebration'?'':growthParticles());$('app').append(layer);growthOverlay=layer;
+ // Fit the complete stage card to the viewport without an inner scrollbar.
+ let stageFitObserver=null;
+ if(kind==='stageCelebration'){
+  const card=layer.querySelector('.stageVictory');
+  card.style.maxHeight='none';card.style.overflow='visible';card.style.flexShrink='0';
+  const fit=()=>{if(!layer.isConnected)return;const scale=Math.min(1,(layer.clientHeight-24)/Math.max(1,card.offsetHeight),(layer.clientWidth-24)/Math.max(1,card.offsetWidth));card.style.scale=String(Math.max(.1,scale));};
+  stageFitObserver=new ResizeObserver(fit);stageFitObserver.observe(layer);stageFitObserver.observe(card);fit();
+ }
  const stopSound=kind==='stageCelebration'?window.BasketballSFX?.play('win',{group:'celebration',volume:.75,duck:true,delay:850}):growthChime(kind==='teamWelcome');
  const stopConfetti=(kind==='teamWelcome'||kind==='stageCelebration')?startCelebrationCanvas(layer):()=>{};
  // A fresh overlay and fresh animation timelines are created on every replay.
  layer.getAnimations({subtree:true}).forEach(animation=>{animation.cancel();animation.play()});
- const close=()=>{stopConfetti();stopSound?.();layer.getAnimations({subtree:true}).forEach(animation=>animation.cancel());layer.remove();blocked.forEach(x=>x.el.inert=x.inert);growthOverlay=null;paused=wasPaused;clockLast=performance.now();onclose?.();persist();render();if(focus?.isConnected)focus.focus();scheduleGrowth();afterclose?.()};
+ const close=()=>{stageFitObserver?.disconnect();stopConfetti();stopSound?.();layer.getAnimations({subtree:true}).forEach(animation=>animation.cancel());layer.remove();blocked.forEach(x=>x.el.inert=x.inert);growthOverlay=null;paused=wasPaused;clockLast=performance.now();onclose?.();persist();render();if(focus?.isConnected)focus.focus();scheduleGrowth();afterclose?.()};
  layer.querySelector('.growthContinue').onclick=close;layer.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close()}if(e.key==='Tab'){e.preventDefault();layer.querySelector('.growthContinue').focus()}});layer.querySelector('.growthContinue').focus();
 }
 function showRankUp(rank){const r=PLAYER_RANKS[rank-1];openGrowthOverlay('rankCelebration',`<div class="rankBurst" aria-hidden="true"></div><div class="rankCard"><p class="rankEyebrow">LEVEL UP · 等级提升</p><img class="rankAward" src="${rankImage(rank)}" alt="${r.name}徽章"><h1>${r.name}</h1><p>${r.en}</p><strong>${esc(state.profile.name)}，你的努力被球队看见了！</strong><span>${totalXP()} XP</span><button class="growthContinue primary">${rank===5?'正式入队 →':'继续挑战 →'}</button></div>`,()=>state.growth.shown=Math.max(state.growth.shown,rank))}
