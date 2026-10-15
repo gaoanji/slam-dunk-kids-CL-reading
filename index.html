@@ -1771,6 +1771,7 @@ function openGrowth(){
   if(state.wallet<10){showModal('继续训练，积累星星',`还差 ${10-state.wallet} 颗星星即可兑换10 XP。`,[['去投篮',()=>{closeModal();openShoot()}],['返回成长',openGrowth]]);return}
   showModal('确认兑换成长XP',`使用10颗星星获得10 XP。兑换后还剩 ${state.wallet-10} 颗星星。\n星星也可以保留，用来兑换阅读提示。`,[['确认兑换',()=>{if(state.wallet<10||totalXP()>=310)return openGrowth();state.wallet-=10;state.spent+=10;state.growth.converted+=10;state.ledger.push({id:crypto.randomUUID(),kind:'xp',amount:-10,at:Date.now()});persist();closeModal();walletUI();render();scheduleGrowth();window.BasketballSFX?.play('exchange',{group:'feedback',volume:.45})}],['返回',openGrowth]]);
  },'primary'))}
+ if(rank===5)$('modalButtons').append(btn('领取入队证书',openCertificate,'primary'));
  if(rank===5)$('modalButtons').append(btn('重温入队时刻',()=>{closeModal();showTeamWelcome(true)},'primary'));
  $('modalButtons').append(btn('投篮赚星星',()=>{closeModal();openShoot()}),btn('返回游戏',closeModal));
 }
@@ -1831,7 +1832,7 @@ const growthCloseShoot=closeShoot;closeShoot=function(){growthCloseShoot();sched
 const growthSummary=renderSummary;renderSummary=function(){
  growthSummary();const hero=$('view').querySelector('.hero');hero.querySelectorAll('p.muted').forEach(p=>{if(p.textContent.includes('动画')||p.textContent.includes('没有总分门槛'))p.remove()});
  const actions=$('summaryActions');[...actions.children].forEach(b=>{if(b.textContent.includes('占位'))b.remove()});
- const p=document.createElement('div');p.className='summaryGrowth';p.innerHTML=`<img src="${rankImage(playerRank())}" alt=""><div><h2>${PLAYER_RANKS[playerRank()-1].name} · ${totalXP()} XP</h2><p>${growthProgressText()}</p><small>正式入队需要310 XP，并完成全部31题。</small></div>`;hero.insertBefore(p,actions);actions.append(btn('我的成长 / XP',openGrowth,'primary'));if(playerRank()===5)actions.append(btn('重温入队时刻',()=>showTeamWelcome(true)));
+ const p=document.createElement('div');p.className='summaryGrowth';p.innerHTML=`<img src="${rankImage(playerRank())}" alt=""><div><h2>${PLAYER_RANKS[playerRank()-1].name} · ${totalXP()} XP</h2><p>${growthProgressText()}</p><small>正式入队需要310 XP，并完成全部31题。</small></div>`;hero.insertBefore(p,actions);actions.append(btn('我的成长 / XP',openGrowth,'primary'));if(playerRank()===5)actions.append(btn('领取入队证书',openCertificate,'primary'),btn('重温入队时刻',()=>showTeamWelcome(true)));
 };
 rules=function(){showModal('规则与记录','首次阅读：第一次答对10分，第二次5分，之后0分；完成全部31题后，首次成绩进入排行榜。\n成长：首次阅读1分＝1 XP；10颗星星可兑换10 XP。重玩不重复获得阅读XP。310 XP＋完成31题成为正式球员。\n提示：页码1星，段落定位累计3星；提示不扣阅读分或XP。星星余额上限30颗，训练与阅读成绩分开。\n云端：同一个名字和班级可以换电脑继续。离开前请确认“已保存到云端”。断网时保留本机记录，联网后补传。\n用时不影响成绩。', [['玩法教学 / Tutorial',()=>{closeModal();openGameTutorial()}],['我的成长',()=>{closeModal();openGrowth()}],['立即保存',async()=>{try{await saveCloud(true);showModal('存档状态',cloudMessage)}catch(e){if(!cloudConflict)showModal('存档状态',cloudErrorText(e))}}],['下载记录',exportRecord],['返回',closeModal]])};
 $('rulesBtn').onclick=rules;
@@ -1864,6 +1865,62 @@ function wireReliableTutorialShot(){
 }
 const growthCloseTutorial=closeGameTutorial;closeGameTutorial=function(){if(tutorialSession)state.tutorialRevision=2;growthCloseTutorial();scheduleGrowth()};
 const growthStyle=document.createElement('style');growthStyle.textContent=GROWTH_CSS;document.head.append(growthStyle);ensureGrowth();render();
+
+
+// Certificate artwork is kept external; personalised fields are rendered at export time.
+let certificateBusy=false,certificatePreviewURL=null;
+async function certificateCanvas(c){
+ const img=new Image();img.src='./growth-assets/certificate-template.png';await img.decode();
+ await document.fonts.ready;
+ const canvas=document.createElement('canvas');canvas.width=img.naturalWidth*2;canvas.height=img.naturalHeight*2;
+ const ctx=canvas.getContext('2d');ctx.scale(canvas.width/1491,canvas.height/1055);ctx.drawImage(img,0,0,1491,1055);
+ ctx.fillStyle='#082747';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+ function field(text,x,y,width,size){
+  text=String(text);ctx.font=`700 ${size}px "Microsoft YaHei","PingFang SC",system-ui,sans-serif`;
+  while(ctx.measureText(text).width>width&&size>12){size--;ctx.font=`700 ${size}px "Microsoft YaHei","PingFang SC",system-ui,sans-serif`}
+  ctx.fillText(text,x,y,width);
+ }
+ field(c.name,543,369,535,38);field(c.class,1043,369,170,34);
+ field(c.code,551,587,310,23);field(c.date,1073,587,290,28);
+ return canvas;
+}
+async function openCertificate(){
+ if(certificateBusy)return;
+ if(playerRank()!==5){showModal('入队证书尚未解锁','完成全部31项阅读任务，并达到310 XP，即可领取专属证书。');return}
+ const meta=cloudMeta();
+ if(meta.localOnly||!meta.token){showModal('连接云端后领取证书','请用相同的姓名和班级登录云端，保存进度后再领取。');return}
+ if(cloudConflict)return;
+ certificateBusy=true;const owner=profileKey(state.profile);
+ showModal('正在准备你的入队证书','正在确认云端成绩，请稍候…',[]);
+ try{
+  // A save may finish an older queued snapshot. Flush the current one as well.
+  for(let i=0;i<3;i++){const saved=await saveCloud(true);if(cloudConflict)return;if(!saved.pending&&!cloudMeta().dirty)break}
+  if(cloudMeta().dirty)throw Error('NETWORK');
+  const result=await cloudRPC({action:'certificate',name:state.profile.name,class:state.profile.class,token:meta.token});
+  if(profileKey(state.profile)!==owner)return;
+  const c=result.certificate;
+  if(!c||!c.code||!/^\d{4}-\d{2}-\d{2}$/.test(c.date))throw Error('INVALID_REQUEST');
+  const canvas=await certificateCanvas(c);
+  const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(Error('EXPORT_FAILED')),'image/png'));
+  if(profileKey(state.profile)!==owner)return;
+  if(certificatePreviewURL)URL.revokeObjectURL(certificatePreviewURL);
+  const url=URL.createObjectURL(blob);certificatePreviewURL=url;
+  showModal('你的正式入队证书 · Team Certificate','',[]);
+  document.querySelector('#modal .dialog').classList.add('certificateDialog');
+  const preview=document.createElement('img');preview.src=url;preview.alt=`${c.name}的阅读挑战完成暨正式入队证书`;
+  preview.style.cssText='display:block;width:100%;height:auto;border-radius:8px';$('modalText').append(preview);
+  const note=document.createElement('p');note.textContent='证书编号与日期已保存，再次领取或换电脑下载都保持一致。';note.style.cssText='font-size:14px;text-align:center';$('modalText').append(note);
+  const download=document.createElement('a');download.className='primary certificateDownload';download.textContent='下载证书 PNG';download.href=url;
+  download.download='篮球小子_入队证书_'+c.name.replace(/[\\/:*?"<>|]/g,'_')+'.png';
+  $('modalButtons').append(download,btn('返回成绩与排行榜',()=>{closeModal();summary()}));
+ }catch(e){
+  if(cloudConflict)return;
+  const message=(e.code||e.message)==='NOT_ELIGIBLE'?'云端记录尚未达到入队条件，请先完成全部任务并同步310 XP。':e.message==='EXPORT_FAILED'?'证书图片暂时未能生成，请重试。':cloudErrorText(e);
+  showModal('证书暂未生成',message,[['重试',openCertificate],['返回',closeModal]]);
+ }finally{certificateBusy=false}
+}
+const certificateShowModal=showModal;showModal=function(...args){document.querySelector('#modal .dialog').classList.remove('certificateDialog');certificateShowModal(...args)};
+const certificateStyle=document.createElement('style');certificateStyle.textContent=`#modal .dialog.certificateDialog{width:min(1100px,calc(100vw - 28px));max-height:calc(100dvh - 28px);overflow:auto;padding:16px}.certificateDialog #modalText{white-space:normal}.certificateDownload{display:inline-flex;align-items:center;justify-content:center;padding:12px 20px;border-radius:12px;background:#e88627;color:#fff;text-decoration:none;font-weight:700;border:1px solid #ffcf85;min-height:44px}`;document.head.append(certificateStyle);
 
 const GAME_MUSIC={"shooting": "./audio/bgm-shooting.mp3", "map": "./audio/bgm-map.mp3", "reading": "./audio/bgm-reading.mp3", "opening": "./audio/bgm-opening.mp3"};
 // One shared music player across the reading game and the shooting iframe.
